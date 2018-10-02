@@ -1,46 +1,43 @@
 #include <Arduino.h>
-#include <ThreadController.h>
-#include "TensionSensor.h"
+
+#include "ThreadManager.h"
+#include "VoltageSensor.h"
+#include "ACS712Sensor.h"
 
 int ledPin = 13;
 
-ThreadController threadCtrl = ThreadController();
 
-typedef void (runFunction)();
 
-Thread createThread(runFunction *f, int interval){
-    Thread t = Thread();
-    t.onRun(f);
-    t.setInterval(interval);
-    threadCtrl.add(&t);
-    return t;
+void blinkLed()
+{
+    static bool ledStatus = false;
+    ledStatus = !ledStatus;
+
+    digitalWrite(ledPin, ledStatus);
+
+    Serial.print("blinking: ");
+    Serial.println(ledStatus);
 }
 
-void blinkLed(){
-	static bool ledStatus = false;
-	ledStatus = !ledStatus;
-
-	digitalWrite(ledPin, ledStatus);
-
-	Serial.print("blinking: ");
-	Serial.println(ledStatus);
-}
-
-void readTension(){
+void verifyCoolerOn()
+{
     Serial.print("Tensao: ");
-    Serial.println(getTensionValue(A0));
+    // Serial.println(getTensionValue(A0));
 }
 
+void setup()
+{
+    Serial.begin(9600);
+    
+    SensorThread mainVoltage = ThreadManager::instance().addSensorThread(VoltageSensor(A0, 50));
+    SensorThread coolerAmps = ThreadManager::instance().addSensorThread(ACS712A30Sensor(A1, 500));
 
+    ThreadManager::instance().createThread(verifyCoolerOn, 500);
 
-void setup() {
-    // put your setup code here, to run once:
-
-    createThread(blinkLed, 2000);
-    createThread(readTension, 100);
+   
 }
 
-void loop() {
-    threadCtrl.run();
+void loop()
+{
+    delay(1000);
 }
-
