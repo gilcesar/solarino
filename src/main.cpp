@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ThreadController.h>
+#include "TensionSensor.h"
 
 int ledPin = 13;
 
@@ -25,14 +26,21 @@ void blinkLed(){
 	Serial.println(ledStatus);
 }
 
+void readTension(){
+    Serial.print("Tensao: ");
+    Serial.println(getTensionValue(A0));
+}
+
 
 
 void setup() {
     // put your setup code here, to run once:
 
     createThread(blinkLed, 2000);
+    createThread(readTension, 100);
 }
 
 void loop() {
     threadCtrl.run();
 }
+
