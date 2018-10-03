@@ -1,8 +1,8 @@
-#ifndef THREAD_MANAGER_H
-#define THREAD_MANAGER_H
+#ifndef ThreadManager_h
+#define ThreadManager_h
 
 #include <ThreadController.h>
-#include <TimerOne.h>
+#include <ThreadRunOnce.h>
 
 #include "SensorThread.h"
 
@@ -13,21 +13,18 @@ class ThreadManager
   private:
     ThreadController threadCtrl = ThreadController();
 
+    ThreadManager()
+    {
+    }
+
+  public:
     void timerCallback()
     {
         threadCtrl.run();
     }
 
-    ThreadManager()
+    static ThreadManager &instance()
     {
-        Timer1.initialize(50 * 1000);
-        Timer1.attachInterrupt(timerCallback);
-        Timer1.start();
-    }
-
-  public:
-
-    static ThreadManager& instance(){
         static ThreadManager INSTANCE;
         return INSTANCE;
     }
@@ -41,7 +38,16 @@ class ThreadManager
         return t;
     }
 
-    SensorThread addSensorThread(SensorThread t){
+    SensorThread addSensorThread(SensorThread t)
+    {
+        threadCtrl.add(&t);
+        return t;
+    }
+
+    ThreadRunOnce createThreadRunOnce(ThreadCallback *callback)
+    {
+        ThreadRunOnce t = ThreadRunOnce();
+        t.onRun(callback);
         threadCtrl.add(&t);
         return t;
     }

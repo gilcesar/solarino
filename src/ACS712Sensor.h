@@ -5,8 +5,8 @@
  * Created on April 9, 2018, 8:45 PM
  */
 
-#ifndef _ACS712_H
-#define _ACS712_H
+#ifndef ACS712Sensor_h
+#define ACS712Sensor_h
 #include "Arduino.h"
 #include "SensorThread.h"
 

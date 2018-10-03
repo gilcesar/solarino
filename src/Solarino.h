@@ -1,5 +1,5 @@
-#ifndef SOLARINO_H
-#define SOLARINO_H
+#ifndef Solarino_h
+#define Solarino_h
 
 class Solarino {
 

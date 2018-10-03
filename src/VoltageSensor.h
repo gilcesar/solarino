@@ -1,5 +1,5 @@
-#ifndef VOLTAGE_SENSOR_H
-#define VOLTAGE_SENSOR_H
+#ifndef VoltageSensor_h
+#define VoltageSensor_h
 
 #include <Arduino.h>
 #include "SensorThread.h"

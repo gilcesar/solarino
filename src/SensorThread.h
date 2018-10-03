@@ -1,5 +1,5 @@
-#ifndef SENSOR_THREAD_H
-#define SENSOR_THREAD_H
+#ifndef SensorThread_h
+#define SensorThread_h
 
 #include <Thread.h>
 
