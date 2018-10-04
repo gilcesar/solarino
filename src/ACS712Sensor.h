@@ -17,12 +17,6 @@ enum Model
     A05 = 185
 };
 
-enum Current
-{
-    AC,
-    DC
-};
-
 class ACS712Sensor : public Sensor
 {
   private:
@@ -30,22 +24,22 @@ class ACS712Sensor : public Sensor
     Scale scale = Scale(512, 1024, 0, 2.5);
 
     int mVperAmp = Model::A30;
-    Current current = Current::AC;
     int value;
+    float i, iRms;
     double wattTotal = 0;
     float wattPeak = 0;
     float currentWatt = 0;
     uint64_t lastTime = millis();
 
-    float calcIRms()
+    void calcIRms()
     {//AC
-        return calcI() / sqrt(2); // RMS
+        iRms = i / sqrt(2); // RMS
     }
 
-    float calcI()
+    void calcI()
     {//DC
         float scaled = scale.getScaled(value);
-        return scaled / (mVperAmp / 1000.0f);
+        i = scaled / (mVperAmp / 1000.0f);
     }
 
     void updateWatts()
@@ -64,9 +58,7 @@ class ACS712Sensor : public Sensor
     void reset()
     {
         value = getRawValue();
-        wattTotal = 0;
-        wattPeak = 0;
-        currentWatt = 0;
+        wattTotal = wattPeak = currentWatt = i = iRms = 0.0f;
         lastTime = millis();
     }
 
@@ -76,10 +68,14 @@ class ACS712Sensor : public Sensor
         reset();
     }
 
-    void setCurrentType(Current current)
+    float getDCValue()
     {
-        this->current = current;
-        reset();
+        return i;
+    }
+
+    float getACValue()
+    {
+        return iRms;
     }
 
     float getValue()
@@ -94,13 +90,12 @@ class ACS712Sensor : public Sensor
         if ((millis() - lastTime) > INTERVAL)
         {
             calcIRms();
-            maxBottomWave = maxUpperWave = rawValue;
+            value = rawValue;
             lastTime = millis();
         }
         else
         {
-            maxBottomWave = rawValue < maxBottomWave ? rawValue : maxBottomWave;
-            maxUpperWave = rawValue > maxUpperWave ? rawValue : maxUpperWave;
+            value = rawValue > value ? rawValue : value;
         }
     }
 
