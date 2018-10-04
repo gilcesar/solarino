@@ -27,22 +27,25 @@ class ACS712Sensor : public Sensor
 {
   private:
     uint64_t INTERVAL = 20UL;
-    Scale scale = Scale(0, 1024, 0, 5); //0-5 Volts no pino
+    Scale scale = Scale(512, 1024, 0, 2.5);
 
     int mVperAmp = Model::A30;
     Current current = Current::AC;
-    int maxBottomWave, maxUpperWave;
-    float iRms;
+    int value;
     double wattTotal = 0;
     float wattPeak = 0;
     float currentWatt = 0;
     uint64_t lastTime = millis();
 
-    void calcIRms()
-    {
-        float volts = scale.getScaled(maxUpperWave - maxBottomWave); //Volts pico a pico da senoide
-        float iPico = volts / (mVperAmp / 1000.0f) / 2;              //ex.: 66 mV/A - (Pico a Pico)/2 = IPico
-        iRms = iPico / sqrt(2);                                      // ->  (Irms = Ipico / √2)
+    float calcIRms()
+    {//AC
+        return calcI() / sqrt(2); // RMS
+    }
+
+    float calcI()
+    {//DC
+        float scaled = scale.getScaled(value);
+        return scaled / (mVperAmp / 1000.0f);
     }
 
     void updateWatts()
@@ -54,14 +57,13 @@ class ACS712Sensor : public Sensor
   public:
     ACS712Sensor(int pin) : Sensor(pin)
     {
-        maxBottomWave = maxUpperWave = getRawValue();
+        value = getRawValue();
         lastTime = millis();
     }
 
     void reset()
     {
-        maxBottomWave, maxUpperWave = getRawValue();
-        iRms = 0;
+        value = getRawValue();
         wattTotal = 0;
         wattPeak = 0;
         currentWatt = 0;
