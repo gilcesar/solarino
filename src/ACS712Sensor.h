@@ -8,7 +8,6 @@
 #ifndef ACS712Sensor_h
 #define ACS712Sensor_h
 #include "Arduino.h"
-#include "SensorThread.h"
 
 enum Model
 {
@@ -16,57 +15,52 @@ enum Model
     A30 = 66
 };
 
-class ACS712Sensor : public SensorThread
+class ACS712Sensor : public Thread
 {
   private:
-
-    // typedef SensorThread super;
+    int pin, interval;
 
     int mVperAmp = Model::A30;
-    float vpp = 0;
 
-   
-    float getVoltageRMS()
+    void setVoltageRMS()
     {
-        return (this->vpp / 2.0) * 0.707;
-    }
+        int rawValue = analogRead(this->pin);
 
-    float getVPP()
-    {
-        int maxValue, minValue = getRawValue();
+        int maxValue, minValue = rawValue;
 
-        uint32_t start_time = millis();
+        //uint64_t start_time = millis();
 
-        while ((millis() - start_time) < 20)
+         for (int i=0;i<200;i++)//millis não funciona dentro de laços :-(
         {
-            maxValue = getRawValue() > maxValue ? getRawValue() : maxValue;
-            minValue = getRawValue() < minValue ? getRawValue() : minValue;
+            maxValue = rawValue > maxValue ? rawValue : maxValue;
+            minValue = rawValue < minValue ? rawValue : minValue;
+            rawValue = analogRead(this->pin);
         }
-        return ((maxValue - minValue) * 5.0) / 1024;
+
+        float res = ((maxValue - minValue) * 5.0) / 1024.0;
+        vRMS = (res / 2.0) * 0.707;
     }
 
   public:
-    ACS712Sensor(int pin, int interval, Model model) : SensorThread(pin, interval)
+    ACS712Sensor(int pin, int interval)
     {
-        this->mVperAmp = model;
+        this->pin = pin;
+        this->setInterval(interval);
+        //this->mVperAmp = model;
     }
 
     float getValue()
     {
-        return (getVoltageRMS() * 1000) / mVperAmp;
+        float res = (vRMS * 1000.0f) / mVperAmp;
+        //Serial.print("getValue ");
+        //Serial.println(getVoltageRMS());
+        return res;
     }
 
-    void run2()
+    void run()
     {
-        this->vpp = getVPP();
-    }
-};
-
-class ACS712A30Sensor : public ACS712Sensor{
-    public:
-
-    ACS712A30Sensor(int pin, int interval) : ACS712Sensor(pin, interval, Model::A30)
-    {
+        setVoltageRMS();
+        runned();
     }
 };
 

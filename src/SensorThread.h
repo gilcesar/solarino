@@ -47,11 +47,11 @@ class SensorThread : public Thread
         runned();
     }
 
-    virtual void run2(){}
-
-    virtual float getValue(){
-        return getRawValue();
+    virtual void run2(){
+        Serial.println("mother run2");
     }
+
+    virtual float getValue(){}
 
     int getRawValue()
     {

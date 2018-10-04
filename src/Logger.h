@@ -52,7 +52,7 @@ class Logger
 
     Logger()
     {
-        Serial.begin(9600);
+        //Serial.begin(9600);
         info("Logger inicializado!");
     }
   public:

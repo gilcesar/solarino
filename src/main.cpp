@@ -6,16 +6,17 @@
 #include "VoltageSensor.h"
 #include "ACS712Sensor.h"
 
-const uint8_t SOURCE_PIN = 1;
-const uint8_t COOLER_PIN = 2;
+const uint8_t SOURCE_PIN = 2;
+const uint8_t COOLER_PIN = 3;
 
 enum RelayState {ON = LOW, OFF = HIGH};
 
-bool canTurnOnCooler = false;
+bool canTurnOnCooler = true;
 
-SensorThread mainVoltageThread = ThreadManager::instance().addSensorThread(VoltageSensor(A0, 50));
-SensorThread coolerAmpsThread = ThreadManager::instance().addSensorThread(ACS712A30Sensor(A1, 500));
-
+ACS712Sensor coolerAmpsThread = ACS712Sensor(A0, 500);
+ 
+//SensorThread mainVoltageThread = ThreadManager::instance().addSensorThread(VoltageSensor(A1, 50));
+/* 
 ThreadRunOnce turnOnSourceThread = ThreadManager::instance().createThreadRunOnce([] {
     digitalWrite(SOURCE_PIN, RelayState::ON);
 });
@@ -30,8 +31,8 @@ ThreadRunOnce turnOnCoolerThread = ThreadManager::instance().createThreadRunOnce
 
 ThreadRunOnce turnOffCoolerThread = ThreadManager::instance().createThreadRunOnce([] {
     digitalWrite(COOLER_PIN, RelayState::OFF);
-});
-
+}); */
+ 
 
 void blinkLed()
 {
@@ -41,8 +42,8 @@ void blinkLed()
 
     digitalWrite(ledPin, ledStatus);
 
-    Logger::debug("blinking: ");
-    Logger::debug(ledStatus? "On" : "Off");
+    // Logger::debug("blinking: ");
+    // Logger::debug(ledStatus? "On" : "Off");
 }
 
 uint8_t readOutputPinState(uint8_t pin)
@@ -79,40 +80,46 @@ bool isSourceOn()
 void verifyAndManageCooler()
 {
     const float RAISE_REF = 0.5;
-
+    /* Serial.print("Pre Amps ");
     if(!canTurnOnCooler){
-        Logger::info("Can not turn on freezer");
+        //Logger::info("Can not turn on freezer");
         return;
-    }
-    if (coolerAmpsThread.getValue() > RAISE_REF && !isCoolerOn())
+    } */
+    float amps = coolerAmpsThread.getValue();
+    Serial.print("Amps ");
+    Serial.println(amps);
+
+    if (amps > RAISE_REF && !isCoolerOn())
     {
+       // Logger::info("Turn on freezer...");
         //Liga a o nobreak na rede
-        turnOnSourceThread.setRunOnce(100);
+        //turnOnSourceThread.setRunOnce(100);
         //Aguarda 10 segundos para estabilizar e assume o freezer pelo nobreak
-        turnOnCoolerThread.setRunOnce(10000);
+        //turnOnCoolerThread.setRunOnce(10000);
         //Desliga o nobreak da rede, o inversor assume a partir daqui ==> Chaveamento 0 segundos
-        turnOffSourceThread.setRunOnce(12000);
+        //turnOffSourceThread.setRunOnce(12000);
     }
     else if(isCoolerOn())
     {
+       // Logger::info("Turn off freezer...");
         //Volta com o freezer diretamente para a rede, aguardando novo ciclo
-        turnOffCoolerThread.setRunOnce(100);
+        //turnOffCoolerThread.setRunOnce(100);
     }
     else{
-        Logger::debug("verifyAndManageCooler. Nothing to do...");
+       // Logger::debug("verifyAndManageCooler. Nothing to do...");
     }
 }
 
 void verifyAndManageBateries(){
     const float MIN_VOLTAGE = 24.0;
 
-    //if(mainVoltageThread.getValue() < MIN_VOLTAGE && !isCoolerOn()){
+   /*  //if(mainVoltageThread.getValue() < MIN_VOLTAGE && !isCoolerOn()){
     if(mainVoltageThread.getValue() < MIN_VOLTAGE){
         canTurnOnCooler = false;
         turnOffCoolerThread.setRunOnce(100);
     }else{
         canTurnOnCooler = true;
-    }
+    } */
 }
 
 void timerCallback()
@@ -127,17 +134,23 @@ void resetPins(){
 
 void setup()
 {
-    //Serial.begin(9600);
-    Logger::setLevel(Level::DEBUG);
+    Serial.begin(9600);
+    Serial.println("Setup");
 
-    ThreadManager::instance().createThread(verifyAndManageCooler, 500);
-    ThreadManager::instance().createThread(verifyAndManageBateries, 500);
+    ThreadManager::instance().createThread(verifyAndManageCooler, 3000);
+    ThreadManager::instance().addACS712Thread(coolerAmpsThread);
 
-    Timer1.initialize(50000); //50 milisecs
+    //ThreadManager::instance().createThread(verifyAndManageBateries, 500);
+
+    Timer1.initialize(1000); //1 milisecs
     Timer1.attachInterrupt(timerCallback);
     Timer1.start();
 }
 
 void loop()
 {
+    //Serial.print("ana");
+    //Serial.println(analogRead(A0));
+    delay(100);
+
 }

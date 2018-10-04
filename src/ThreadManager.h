@@ -4,7 +4,8 @@
 #include <ThreadController.h>
 #include <ThreadRunOnce.h>
 
-#include "SensorThread.h"
+#include "ACS712Sensor.h"
+
 
 typedef void(ThreadCallback)();
 
@@ -20,6 +21,7 @@ class ThreadManager
   public:
     void timerCallback()
     {
+        //Serial.println("timerCallback class");
         threadCtrl.run();
     }
 
@@ -31,6 +33,7 @@ class ThreadManager
 
     Thread createThread(ThreadCallback *callback, int interval)
     {
+        Serial.println("create Thread");
         Thread t = Thread();
         t.onRun(callback);
         t.setInterval(interval);
@@ -38,10 +41,10 @@ class ThreadManager
         return t;
     }
 
-    SensorThread addSensorThread(SensorThread t)
+    void addACS712Thread(ACS712Sensor t)
     {
+        Serial.println("add Thread");
         threadCtrl.add(&t);
-        return t;
     }
 
     ThreadRunOnce createThreadRunOnce(ThreadCallback *callback)
