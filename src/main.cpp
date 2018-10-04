@@ -13,7 +13,7 @@ enum RelayState {ON = LOW, OFF = HIGH};
 
 bool canTurnOnCooler = true;
 
-ACS712Sensor coolerAmpsThread = ACS712Sensor(A0, 500);
+ACS712Sensor coolerAmps = ACS712Sensor(A0);
  
 //SensorThread mainVoltageThread = ThreadManager::instance().addSensorThread(VoltageSensor(A1, 50));
 /* 
@@ -85,7 +85,7 @@ void verifyAndManageCooler()
         //Logger::info("Can not turn on freezer");
         return;
     } */
-    float amps = coolerAmpsThread.getValue();
+    float amps = coolerAmps.getValue();
     Serial.print("Amps ");
     Serial.println(amps);
 
@@ -138,7 +138,6 @@ void setup()
     Serial.println("Setup");
 
     ThreadManager::instance().createThread(verifyAndManageCooler, 3000);
-    ThreadManager::instance().addACS712Thread(coolerAmpsThread);
 
     //ThreadManager::instance().createThread(verifyAndManageBateries, 500);
 
@@ -147,10 +146,14 @@ void setup()
     Timer1.start();
 }
 
+void updateSensors(){
+
+}
+
 void loop()
 {
     //Serial.print("ana");
     //Serial.println(analogRead(A0));
-    delay(100);
+    updateSensors();
 
 }

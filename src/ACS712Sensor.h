@@ -8,61 +8,104 @@
 #ifndef ACS712Sensor_h
 #define ACS712Sensor_h
 #include "Arduino.h"
+#include "Sensor.h"
 
 enum Model
 {
+    A30 = 66,
     A20 = 100,
-    A30 = 66
+    A05 = 185
 };
 
-class ACS712Sensor : public Thread
+enum Current
+{
+    AC,
+    DC
+};
+
+class ACS712Sensor : public Sensor
 {
   private:
-    int pin, interval;
+    uint64_t INTERVAL = 20UL;
+    Scale scale = Scale(0, 1024, 0, 5); //0-5 Volts no pino
 
     int mVperAmp = Model::A30;
+    Current current = Current::AC;
+    int maxBottomWave, maxUpperWave;
+    float iRms;
+    double wattTotal = 0;
+    float wattPeak = 0;
+    float currentWatt = 0;
+    uint64_t lastTime = millis();
 
-    void setVoltageRMS()
+    void calcIRms()
     {
-        int rawValue = analogRead(this->pin);
+        float volts = scale.getScaled(maxUpperWave - maxBottomWave); //Volts pico a pico da senoide
+        float iPico = volts / (mVperAmp / 1000.0f) / 2;              //ex.: 66 mV/A - (Pico a Pico)/2 = IPico
+        iRms = iPico / sqrt(2);                                      // ->  (Irms = Ipico / √2)
+    }
 
-        int maxValue, minValue = rawValue;
-
-        //uint64_t start_time = millis();
-
-         for (int i=0;i<200;i++)//millis não funciona dentro de laços :-(
-        {
-            maxValue = rawValue > maxValue ? rawValue : maxValue;
-            minValue = rawValue < minValue ? rawValue : minValue;
-            rawValue = analogRead(this->pin);
-        }
-
-        float res = ((maxValue - minValue) * 5.0) / 1024.0;
-        vRMS = (res / 2.0) * 0.707;
+    void updateWatts()
+    {
+        wattPeak = currentWatt > wattPeak ? currentWatt : wattPeak;
+        wattTotal += currentWatt;
     }
 
   public:
-    ACS712Sensor(int pin, int interval)
+    ACS712Sensor(int pin) : Sensor(pin)
     {
-        this->pin = pin;
-        this->setInterval(interval);
-        //this->mVperAmp = model;
+        maxBottomWave = maxUpperWave = getRawValue();
+        lastTime = millis();
+    }
+
+    void reset()
+    {
+        maxBottomWave, maxUpperWave = getRawValue();
+        iRms = 0;
+        wattTotal = 0;
+        wattPeak = 0;
+        currentWatt = 0;
+        lastTime = millis();
+    }
+
+    void setModel(Model model)
+    {
+        this->mVperAmp = model;
+        reset();
+    }
+
+    void setCurrentType(Current current)
+    {
+        this->current = current;
+        reset();
     }
 
     float getValue()
     {
-        float res = (vRMS * 1000.0f) / mVperAmp;
-        //Serial.print("getValue ");
-        //Serial.println(getVoltageRMS());
-        return res;
+        return iRms;
     }
 
-    void run()
+    void update()
     {
-        setVoltageRMS();
-        runned();
+        int rawValue = getRawValue();
+
+        if ((millis() - lastTime) > INTERVAL)
+        {
+            calcIRms();
+            maxBottomWave = maxUpperWave = rawValue;
+            lastTime = millis();
+        }
+        else
+        {
+            maxBottomWave = rawValue < maxBottomWave ? rawValue : maxBottomWave;
+            maxUpperWave = rawValue > maxUpperWave ? rawValue : maxUpperWave;
+        }
+    }
+
+    float getWatt(int voltage)
+    {
+        return currentWatt = getValue() * voltage;
     }
 };
 
-
-#endif /* ACS712_H */
+#endif

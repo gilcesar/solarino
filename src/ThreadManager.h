@@ -41,12 +41,6 @@ class ThreadManager
         return t;
     }
 
-    void addACS712Thread(ACS712Sensor t)
-    {
-        Serial.println("add Thread");
-        threadCtrl.add(&t);
-    }
-
     ThreadRunOnce createThreadRunOnce(ThreadCallback *callback)
     {
         ThreadRunOnce t = ThreadRunOnce();

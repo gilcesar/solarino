@@ -2,14 +2,14 @@
 #define VoltageSensor_h
 
 #include <Arduino.h>
-#include "SensorThread.h"
+#include "Sensor.h"
 
-class VoltageSensor : public SensorThread
+class VoltageSensor : public Sensor
 {
   private:
-
+    Scale scale = Scale(0, 1024, 0, 1024);
   public:
-    VoltageSensor(int pin, int interval) : SensorThread(pin, interval)
+    VoltageSensor(int pin) : Sensor(pin)
     {
     }
     float getValue()
