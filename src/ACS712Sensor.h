@@ -20,32 +20,33 @@ enum Model
 class ACS712Sensor : public Sensor
 {
   private:
-    uint64_t INTERVAL = 20UL;
-    Scale scale = Scale(512, 1024, 0, 2.5);
+    uint64_t INTERVAL = 350UL;
+    Scale scale = Scale(510, 1024, 0, 2.5);
 
     int mVperAmp = Model::A30;
     int value;
     float i, iRms;
-    double wattTotal = 0;
+    double wattHora = 0;
     float wattPeak = 0;
     float currentWatt = 0;
     uint64_t lastTime = millis();
 
     void calcIRms()
     {//AC
-        iRms = i / sqrt(2); // RMS
+        iRms = calcI() / sqrt(2); // RMS
     }
 
-    void calcI()
+    float calcI()
     {//DC
         float scaled = scale.getScaled(value);
-        i = scaled / (mVperAmp / 1000.0f);
+        return i = scaled / (mVperAmp / 1000.0f);
     }
 
-    void updateWatts()
+    void updateWatts(float voltage)
     {
+        currentWatt = getValue() * voltage;
         wattPeak = currentWatt > wattPeak ? currentWatt : wattPeak;
-        wattTotal += currentWatt;
+        //wattHora += currentWatt;
     }
 
   public:
@@ -58,7 +59,7 @@ class ACS712Sensor : public Sensor
     void reset()
     {
         value = getRawValue();
-        wattTotal = wattPeak = currentWatt = i = iRms = 0.0f;
+        wattHora = wattPeak = currentWatt = i = iRms = 0.0f;
         lastTime = millis();
     }
 
@@ -90,6 +91,7 @@ class ACS712Sensor : public Sensor
         if ((millis() - lastTime) > INTERVAL)
         {
             calcIRms();
+            updateWatts(120.0);
             value = rawValue;
             lastTime = millis();
         }
@@ -99,9 +101,17 @@ class ACS712Sensor : public Sensor
         }
     }
 
-    float getWatt(int voltage)
+    float getWatt()
     {
-        return currentWatt = getValue() * voltage;
+        return currentWatt;
+    }
+
+    float getWattPeak(){
+        return wattPeak;
+    }
+
+    float getWattHora(){
+        return wattHora;
     }
 };
 
