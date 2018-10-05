@@ -7,15 +7,16 @@
 class VoltageSensor : public Sensor
 {
   private:
-    Scale scale = Scale(0, 1024, 0, 1024);
+    Scale scale = Scale(0, 1024, 0, 25);
   public:
     VoltageSensor(int pin) : Sensor(pin)
     {
     }
     float getValue()
     {
-        return getRawValue() / 4092.0 / 10.0;
+        return scale.getScaled(getRawValue());
     }
+
 };
 
 #endif

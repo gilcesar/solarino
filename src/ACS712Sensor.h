@@ -17,6 +17,12 @@ enum Model
     A05 = 185
 };
 
+enum Current
+{
+    AC,
+    DC
+};
+
 class ACS712Sensor : public Sensor
 {
   private:
@@ -24,6 +30,7 @@ class ACS712Sensor : public Sensor
     Scale scale = Scale(510, 1024, 0, 2.5);
 
     int mVperAmp = Model::A30;
+    Current currentType = Current::AC;
     int value;
     float i, iRms;
     double wattHora = 0;
@@ -32,12 +39,12 @@ class ACS712Sensor : public Sensor
     uint64_t lastTime = millis();
 
     void calcIRms()
-    {//AC
+    {                             //AC
         iRms = calcI() / sqrt(2); // RMS
     }
 
     float calcI()
-    {//DC
+    { //DC
         float scaled = scale.getScaled(value);
         return i = scaled / (mVperAmp / 1000.0f);
     }
@@ -50,8 +57,9 @@ class ACS712Sensor : public Sensor
     }
 
   public:
-    ACS712Sensor(int pin) : Sensor(pin)
+    ACS712Sensor(int pin, Current current) : Sensor(pin)
     {
+        this->currentType = current;
         value = getRawValue();
         lastTime = millis();
     }
@@ -69,19 +77,9 @@ class ACS712Sensor : public Sensor
         reset();
     }
 
-    float getDCValue()
-    {
-        return i;
-    }
-
-    float getACValue()
-    {
-        return iRms;
-    }
-
     float getValue()
     {
-        return iRms;
+        return currentType == Current::AC? iRms : i;
     }
 
     void update()
@@ -106,11 +104,13 @@ class ACS712Sensor : public Sensor
         return currentWatt;
     }
 
-    float getWattPeak(){
+    float getWattPeak()
+    {
         return wattPeak;
     }
 
-    float getWattHora(){
+    float getWattHora()
+    {
         return wattHora;
     }
 };

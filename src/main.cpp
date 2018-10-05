@@ -3,8 +3,6 @@
 #include <ThreadController.h>
 #include <ThreadRunOnce.h>
 
-#include "Logger.h"
-//#include "ThreadManager.h"
 #include "VoltageSensor.h"
 #include "ACS712Sensor.h"
 
@@ -14,16 +12,33 @@ const uint8_t COOLER_PIN = 3;
 enum RelayState
 {
     ON = LOW,
-    OFF = HIGH
+    OFF = HIGH,
+    AWAITING_ON
 };
 
-bool canTurnOnCooler = true;
+const float RAISE_REF = 0.5;
+//O sitema é de 24V, porém será dividido por dois por causa do limite do sensor
+const float EMERGENCY_VOLTAGE = 11.5;
+const float LOW_VOLTAGE = 11.8;
+const float RECONNECT_COOLER = 12.5;
+const float DISCONNECT_SOURCE = 13.0;
+bool systemVoltageOk = true;
+bool emergencyCharge = false;
 
-ACS712Sensor coolerAmps = ACS712Sensor(A0);
+RelayState coolerState = RelayState::OFF;
+RelayState sourceState = RelayState::OFF;
+
+ACS712Sensor coolerAmps = ACS712Sensor(A0, Current::AC);
+VoltageSensor systemVoltage = VoltageSensor(A1);
 
 typedef void(ThreadCallback)();
 
 ThreadController threadCtrl = ThreadController();
+
+void timerCallback()
+{
+    threadCtrl.run();
+}
 
 Thread *createThread(ThreadCallback *callback, int interval)
 {
@@ -44,39 +59,9 @@ ThreadRunOnce *createThreadRunOnce(ThreadCallback *callback)
     return t;
 }
 
-ThreadRunOnce *turnOnSourceThread  = createThreadRunOnce([]{
-    Serial.println("turnOnSource");
-    digitalWrite(SOURCE_PIN, RelayState::ON);
-});
-
-ThreadRunOnce *turnOffSourceThread = createThreadRunOnce([]{
-    Serial.println("turnOffSource");
-    digitalWrite(SOURCE_PIN, RelayState::OFF);
-});
-
-ThreadRunOnce *turnOnCoolerThread  = createThreadRunOnce([]{
-    Serial.println("turnOnCooler");
-    digitalWrite(COOLER_PIN, RelayState::ON);
-});
-ThreadRunOnce *turnOffCoolerThread = createThreadRunOnce([]{
-    Serial.println("turnOffCooler");
-    digitalWrite(COOLER_PIN, RelayState::OFF);
-});
-
 uint8_t readOutputPinState(uint8_t pin)
 {
     return bitRead(PORTD, pin);
-
-    /*
-    int digitalReadOutputPin(uint8_t pin)
-{
- uint8_t bit = digitalPinToBitMask(pin);
- uint8_t port = digitalPinToPort(pin);
- if (port == NOT_A_PIN) 
-   return LOW;
-
- return (*portOutputRegister(port) & bit) ? HIGH : LOW;
-}*/
 }
 
 bool isCoolerOn()
@@ -89,41 +74,112 @@ bool isSourceOn()
     return readOutputPinState(SOURCE_PIN) == RelayState::ON;
 }
 
-void verifyAndManageCooler()
+void updateCoolerState()
 {
-    const float RAISE_REF = 0.5;
-    if (!canTurnOnCooler)
+    coolerState = isCoolerOn() ? RelayState::ON : RelayState::OFF;
+}
+void updateSourceState()
+{
+    sourceState = isSourceOn() ? RelayState::ON : RelayState::OFF;
+}
+ThreadRunOnce *turnOnCoolerThread = createThreadRunOnce([] {
+    Serial.println("turnOnCooler");
+    digitalWrite(COOLER_PIN, RelayState::ON);
+    updateCoolerState();
+});
+ThreadRunOnce *turnOffCoolerThread = createThreadRunOnce([] {
+    Serial.println("turnOffCooler");
+    digitalWrite(COOLER_PIN, RelayState::OFF);
+    updateCoolerState();
+});
+
+ThreadRunOnce *turnOnSourceThread = createThreadRunOnce([] {
+    Serial.println("turnOnSource");
+    digitalWrite(SOURCE_PIN, RelayState::ON);
+    updateSourceState();
+});
+ThreadRunOnce *turnOffSourceThread = createThreadRunOnce([] {
+    Serial.println("turnOffSource");
+    digitalWrite(SOURCE_PIN, RelayState::OFF);
+    updateSourceState();
+});
+
+bool canTurnOnCooler()
+{
+    float amps = coolerAmps.getValue();
+    return (amps > RAISE_REF) && coolerState == RelayState::OFF && systemVoltage.getValue() > RECONNECT_COOLER;
+}
+bool canTurnOffCooler()
+{
+    float amps = coolerAmps.getValue();
+    return (amps < RAISE_REF) && coolerState == RelayState::ON;
+}
+
+bool shouldStartEmergencyCharge()
+{
+    return (systemVoltage.getValue() < LOW_VOLTAGE && !isCoolerOn()) || (systemVoltage.getValue() < EMERGENCY_VOLTAGE);
+}
+
+bool canTurnOffSource()
+{
+    return !isEmergencyCharge();
+}
+
+bool isEmergencyCharge()
+{
+    return emergencyCharge && systemVoltage.getValue() < DISCONNECT_SOURCE;
+}
+
+bool canStopEmergencycharge(){
+    return emergencyCharge && systemVoltage.getValue() > DISCONNECT_SOURCE;
+}
+
+void manageCooler()
+{
+    if (canTurnOnCooler())
     {
-        Serial.print("canTurnOnCooler: ");
-        Serial.println(canTurnOnCooler);
-        return;
-    }
-    float amps = coolerAmps.getACValue();
-    if (amps > RAISE_REF && !isCoolerOn())
-    {
-        Serial.println("amps > RAISE_REF");
+        Serial.println("amps > RAISE_REF. Turn on source and cooler");
         //Liga a o nobreak na rede
-        turnOnSourceThread->setRunOnce(1000);
+        turnOnSourceThread->setRunOnce(10);
+        sourceState = RelayState::AWAITING_ON;
+
         //Aguarda para estabilizar e assume o freezer pelo nobreak
-        turnOnCoolerThread->setRunOnce(2000);
+        turnOnCoolerThread->setRunOnce(6000);
+        coolerState = RelayState::AWAITING_ON;
+
         //Desliga o nobreak da rede, o inversor assume a partir daqui ==> Chaveamento 0 segundos
-        turnOffSourceThread->setRunOnce(3000);
+        if (canTurnOffSource())
+        {
+            turnOffSourceThread->setRunOnce(9000);
+        }
     }
-    else if (amps < RAISE_REF && isCoolerOn())
+    else if (canTurnOffCooler())
     {
         //Volta com o freezer diretamente para a rede, aguardando novo ciclo
-        turnOffCoolerThread->setRunOnce(100);
+        turnOffCoolerThread->setRunOnce(10);
     }
     else
     {
-        // Logger::debug("verifyAndManageCooler. Nothing to do...");
+        Serial.print("manageCooler. coolerState: ");
+        Serial.println(coolerState);
     }
 }
 
-void timerCallback()
+void manageSystemVoltage()
 {
-    //ThreadManager::instance().timerCallback();
-    threadCtrl.run();
+
+    if (shouldStartEmergencyCharge())
+    {
+        systemVoltageOk = false;
+        emergencyCharge = true;
+        turnOnSourceThread->setRunOnce(10);
+    }
+    else if (canStopEmergencycharge())
+    {
+        systemVoltageOk = true;
+        emergencyCharge = false;
+        turnOffSourceThread->setRunOnce(10);
+    }
 }
 
 void resetPins()
@@ -131,8 +187,8 @@ void resetPins()
     pinMode(SOURCE_PIN, OUTPUT);
     pinMode(COOLER_PIN, OUTPUT);
 
-    digitalWrite(SOURCE_PIN, HIGH);
-    digitalWrite(COOLER_PIN, HIGH);
+    digitalWrite(SOURCE_PIN, RelayState::OFF);
+    digitalWrite(COOLER_PIN, RelayState::OFF);
 }
 
 void printStatistics()
@@ -144,7 +200,7 @@ void printStatistics()
     Serial.print("\tWatt Atual: ");
     Serial.println(coolerAmps.getWatt());
     Serial.print("\tAmp Atual: ");
-    Serial.println(coolerAmps.getACValue());
+    Serial.println(coolerAmps.getValue());
     Serial.print("\tisCoolerOn: ");
     Serial.println(isCoolerOn());
     Serial.print("\tisSourceOn: ");
@@ -157,10 +213,11 @@ void setup()
     Serial.println("Setup");
     resetPins();
 
-    createThread(verifyAndManageCooler, 5000);
-    createThread(printStatistics, 10000);
+    createThread(manageCooler, 1000);
+    createThread(manageSystemVoltage, 1000);
+    createThread(printStatistics, 30000);
 
-    Timer1.initialize(50000); //50 milisecs
+    Timer1.initialize(10000);
     Timer1.attachInterrupt(timerCallback);
     Timer1.start();
 
@@ -170,12 +227,10 @@ void setup()
 void updateSensors()
 {
     coolerAmps.update();
+    systemVoltage.update();
 }
 
 void loop()
 {
-    //Serial.print("ana");
-    //Serial.println(analogRead(A0));
     updateSensors();
-    delay(10);
 }

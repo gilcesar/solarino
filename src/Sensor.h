@@ -28,19 +28,22 @@ class Sensor
   private:
     int pin;
 
-  public:
-    Sensor(int pin)
-    {
-        this->pin = pin;
-    }
-
+protected:
     int getRawValue()
     {
         return analogRead(this->pin);
     }
 
-    virtual float getValue();
-    virtual void update();
+  public:
+    Sensor(int pin)
+    {
+        this->pin = pin;
+    }
+    virtual float getValue(){
+        return getRawValue();
+    }
+
+    virtual void update(){}
 };
 
 #endif
