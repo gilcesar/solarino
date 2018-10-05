@@ -120,14 +120,14 @@ bool shouldStartEmergencyCharge()
     return (systemVoltage.getValue() < LOW_VOLTAGE && !isCoolerOn()) || (systemVoltage.getValue() < EMERGENCY_VOLTAGE);
 }
 
-bool canTurnOffSource()
-{
-    return !isEmergencyCharge();
-}
-
 bool isEmergencyCharge()
 {
     return emergencyCharge && systemVoltage.getValue() < DISCONNECT_SOURCE;
+}
+
+bool canTurnOffSource()
+{
+    return !isEmergencyCharge();
 }
 
 bool canStopEmergencycharge(){
