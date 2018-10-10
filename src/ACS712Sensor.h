@@ -26,8 +26,8 @@ enum Current
 class ACS712Sensor : public Sensor
 {
   private:
-    uint64_t INTERVAL = 350UL;
-    Scale scale = Scale(510, 1024, 0, 2.5);
+    uint64_t INTERVAL = 50UL;
+    Scale scale = Scale(512, 1024, 0, 2.5);
 
     int mVperAmp = Model::A30;
     Current currentType = Current::AC;
