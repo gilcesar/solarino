@@ -27,7 +27,7 @@ class ACS712Sensor : public Sensor
 {
   private:
     uint64_t INTERVAL = 50UL;
-    Scale scale = Scale(512, 1024, 0, 2.5);
+    Scale scale = Scale(511, 1023, 0, 2.5);
 
     int mVperAmp = Model::A30;
     Current currentType = Current::AC;

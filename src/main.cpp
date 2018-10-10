@@ -18,12 +18,11 @@ enum RelayState
 };
 
 const float RAISE_REF = 0.5;
-const float VOLTAGE_ANCHOR = -11.5;
 //O sitema é de 24V, porém será dividido por dois por causa do limite do sensor
-const float EMERGENCY_VOLTAGE = 11.5 + VOLTAGE_ANCHOR;
-const float LOW_VOLTAGE = 11.8 + VOLTAGE_ANCHOR;
-const float RECONNECT_COOLER = 12.5 + VOLTAGE_ANCHOR;
-const float DISCONNECT_SOURCE = 13.0 + VOLTAGE_ANCHOR;
+const float EMERGENCY_VOLTAGE = 23.0;
+const float LOW_VOLTAGE = 23.6;
+const float RECONNECT_COOLER = 26.0;
+const float DISCONNECT_SOURCE = 25.8;
 bool systemVoltageOk = true;
 bool emergencyCharge = false;
 
@@ -31,7 +30,7 @@ RelayState coolerState = RelayState::OFF;
 RelayState sourceState = RelayState::OFF;
 
 ACS712Sensor coolerAmps = ACS712Sensor(A0, Current::AC);
-VoltageSensor systemVoltage = VoltageSensor(A1);
+VoltageSensor systemVoltage = VoltageSensor(A1, 3.00);//Ajuste para o divisor de tensao
 
 typedef void(ThreadCallback)();
 
@@ -127,7 +126,7 @@ bool isEmergencyChargeDisabled()
 
 bool shouldStartEmergencyCharge()
 {
-    return !isEmergencyChargeDisabled() && ((systemVoltage.getValue() < LOW_VOLTAGE && !isCoolerOn()) || (systemVoltage.getValue() < EMERGENCY_VOLTAGE));
+    return !isEmergencyChargeDisabled() && !emergencyCharge && ((systemVoltage.getValue() < LOW_VOLTAGE && !isCoolerOn()) || (systemVoltage.getValue() < EMERGENCY_VOLTAGE));
 }
 
 bool isEmergencyCharge()
