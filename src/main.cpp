@@ -6,6 +6,44 @@
 #include "VoltageSensor.h"
 #include "ACS712Sensor.h"
 
+//template<class T> inline Print &operator <<(Print &obj, T arg) { obj.print(arg); return obj; }
+
+void print(String header)
+{
+    Serial.print(millis() % 86400000UL);
+    Serial.print(" ");
+    Serial.print(header);
+}
+void println(String header)
+{
+    print(header);
+    Serial.println();
+}
+
+void println(String header, String value)
+{
+    print(header);
+    Serial.println(value);
+}
+
+void println(String header, float value)
+{
+    print(header);
+    Serial.println(value);
+}
+
+void println(String header, long value)
+{
+    print(header);
+    Serial.println(value);
+}
+
+void println(String header, bool value)
+{
+    print(header);
+    Serial.println(value);
+}
+
 const uint8_t SOURCE_PIN = 2;
 const uint8_t COOLER_PIN = 3;
 const uint8_t DISABLE_EMERGENCY_PIN = 4;
@@ -19,18 +57,17 @@ enum RelayState
 
 const float RAISE_REF = 0.5;
 //O sitema é de 24V, porém será dividido por dois por causa do limite do sensor
-const float EMERGENCY_VOLTAGE = 23.0;
-const float LOW_VOLTAGE = 23.6;
-const float RECONNECT_COOLER = 26.0;
-const float DISCONNECT_SOURCE = 25.8;
-bool systemVoltageOk = true;
+const float EMERGENCY_VOLTAGE = 23.4;
+const float LOW_VOLTAGE = 24.6;
+//const float RECONNECT_COOLER = 26.2;
+const float DISCONNECT_SOURCE = 26.4;
 bool emergencyCharge = false;
 
 RelayState coolerState = RelayState::OFF;
 RelayState sourceState = RelayState::OFF;
 
 ACS712Sensor coolerAmps = ACS712Sensor(A0, Current::AC);
-VoltageSensor systemVoltage = VoltageSensor(A1, 3.00);//Ajuste para o divisor de tensao
+VoltageSensor systemVoltage = VoltageSensor(A1, 2.00); //Ajuste para o divisor de tensao
 
 typedef void(ThreadCallback)();
 
@@ -43,8 +80,7 @@ void timerCallback()
 
 Thread *createThread(ThreadCallback *callback, int interval)
 {
-    //Serial.println("create Thread");
-    Thread* t = new Thread();
+    Thread *t = new Thread();
     t->onRun(callback);
     t->setInterval(interval);
     threadCtrl.add(t);
@@ -53,8 +89,7 @@ Thread *createThread(ThreadCallback *callback, int interval)
 
 ThreadRunOnce *createThreadRunOnce(ThreadCallback *callback)
 {
-//    Serial.println("create runOnce");
-    ThreadRunOnce* t = new ThreadRunOnce();
+    ThreadRunOnce *t = new ThreadRunOnce();
     t->onRun(callback);
     threadCtrl.add(t);
     return t;
@@ -62,7 +97,8 @@ ThreadRunOnce *createThreadRunOnce(ThreadCallback *callback)
 
 uint8_t readOutputPinState(uint8_t pin)
 {
-    return bitRead(PORTD, pin);
+    //return bitRead(PORTD, pin);
+    return (0 != (*portOutputRegister(digitalPinToPort(pin)) & digitalPinToBitMask(pin)));
 }
 
 bool isCoolerOn()
@@ -84,59 +120,67 @@ void updateSourceState()
     sourceState = isSourceOn() ? RelayState::ON : RelayState::OFF;
 }
 
-ThreadRunOnce* turnOnCoolerThread = createThreadRunOnce([] {
-    Serial.println("turnOnCooler");
+void turnOnCooler()
+{
+    println("turnOnCooler");
     digitalWrite(COOLER_PIN, RelayState::ON);
     updateCoolerState();
-});
-ThreadRunOnce* turnOffCoolerThread = createThreadRunOnce([] {
-    Serial.println("turnOffCooler");
+}
+ThreadRunOnce *turnOnCoolerThread = createThreadRunOnce(turnOnCooler);
+
+void turnOffCooler()
+{
+    println("turnOffCooler");
     digitalWrite(COOLER_PIN, RelayState::OFF);
     updateCoolerState();
-});
+}
+ThreadRunOnce *turnOffCoolerThread = createThreadRunOnce(turnOffCooler);
 
-ThreadRunOnce* turnOnSourceThread = createThreadRunOnce([] {
-    Serial.println("turnOnSource");
+void turnOnSource()
+{
+    println("turnOnSource");
     digitalWrite(SOURCE_PIN, RelayState::ON);
     updateSourceState();
-});
-ThreadRunOnce* turnOffSourceThread = createThreadRunOnce([] {
-    Serial.println("turnOffSource");
+}
+ThreadRunOnce *turnOnSourceThread = createThreadRunOnce(turnOnSource);
+
+void turnOffSource()
+{
+    println("turnOffSource");
     digitalWrite(SOURCE_PIN, RelayState::OFF);
     updateSourceState();
-});
-
-bool canTurnOnCooler()
-{
-    float amps = coolerAmps.getValue();
-    return (amps > RAISE_REF) && coolerState == RelayState::OFF && systemVoltage.getValue() > RECONNECT_COOLER;
 }
-bool canTurnOffCooler()
-{
-    float amps = coolerAmps.getValue();
-    return (amps < RAISE_REF) && coolerState == RelayState::ON;
-}
+ThreadRunOnce *turnOffSourceThread = createThreadRunOnce(turnOffSource);
 
 bool isEmergencyChargeDisabled()
 {
-    //Serial.print("emergency pin: ");
-    //Serial.println(digitalRead(DISABLE_EMERGENCY_PIN));
     return digitalRead(DISABLE_EMERGENCY_PIN) > 0;
-}
-
-bool shouldStartEmergencyCharge()
-{
-    return !isEmergencyChargeDisabled() && !emergencyCharge && ((systemVoltage.getValue() < LOW_VOLTAGE && !isCoolerOn()) || (systemVoltage.getValue() < EMERGENCY_VOLTAGE));
 }
 
 bool isEmergencyCharge()
 {
-    return emergencyCharge && systemVoltage.getValue() < DISCONNECT_SOURCE;
+    return emergencyCharge;
+}
+
+bool shouldStartEmergencyCharge()
+{
+    return !isEmergencyChargeDisabled() && !isEmergencyCharge() && systemVoltage.getValue() < EMERGENCY_VOLTAGE;
+}
+
+bool canTurnOnCooler()
+{
+    float amps = coolerAmps.getValue();
+    return coolerState == RelayState::OFF && (amps > RAISE_REF) && !isEmergencyCharge() && systemVoltage.getValue() > LOW_VOLTAGE;
+}
+bool canTurnOffCooler()
+{
+    float amps = coolerAmps.getValue();
+    return coolerState == RelayState::ON && (amps < RAISE_REF || isEmergencyCharge());
 }
 
 bool isSystemVoltageOk()
 {
-    return systemVoltageOk;
+    return systemVoltage.getValue() > LOW_VOLTAGE;
 }
 
 float getSystemVoltage()
@@ -158,9 +202,9 @@ void manageCooler()
 {
     if (canTurnOnCooler())
     {
-        Serial.println("amps > RAISE_REF. Turn on source and cooler");
+        println("amps > RAISE_REF. Turn on source and cooler");
         //Liga a o nobreak na rede
-        turnOnSourceThread->setRunOnce(10);
+        turnOnSourceThread->setRunOnce(100);
         sourceState = RelayState::AWAITING_ON;
 
         //Aguarda para estabilizar e assume o freezer pelo nobreak
@@ -190,40 +234,28 @@ void manageSystemVoltage()
 
     if (shouldStartEmergencyCharge())
     {
-        Serial.println("Starting emergency Charge");
-        systemVoltageOk = false;
+        println("Starting emergency Charge: ", systemVoltage.getValue());
         emergencyCharge = true;
         turnOnSourceThread->setRunOnce(10);
     }
     else if (isSourceOn() && (canStopEmergencycharge()))
     {
-        Serial.println("Stopping emergency Charge");
-        systemVoltageOk = true; 
+        println("Stopping emergency Charge: ", systemVoltage.getValue());
         emergencyCharge = false;
-        turnOffSourceThread->setRunOnce(10);
+        turnOffSourceThread->setRunOnce(1);
     }
 }
 void printStatistics()
 {
-    Serial.print("Statistics\n");
-    Serial.print("\tAmp Atual: ");
-    Serial.println(coolerAmps.getValue());
-    Serial.print("\tisCoolerOn: ");
-    Serial.println(isCoolerOn());
-    Serial.print("\tisSourceOn: ");
-    Serial.println(isSourceOn());
-    Serial.print("\tEmergency Charge: ");
-    Serial.println(isEmergencyCharge());
-    Serial.print("\tEmergency Charge Disabled: ");
-    Serial.println(isEmergencyChargeDisabled());
-    Serial.print("\tSystem Voltage OK: ");
-    Serial.println(isSystemVoltageOk());
-    Serial.print("\tSystem Voltage: ");
-    Serial.println(getSystemVoltage());
-
-    Serial.println("\n");
+    println("\nStatistics");
+    println("\tAmps: ", coolerAmps.getValue());
+    println("\tisCoolerOn: ", isCoolerOn());
+    println("\tisSourceOn: ", isSourceOn());
+    println("\tEmergency Charge: ", isEmergencyCharge());
+    println("\tEmergency Charge Disabled: ", isEmergencyChargeDisabled());
+    println("\tVoltage OK: ", isSystemVoltageOk());
+    println("\tVoltage: ", getSystemVoltage());
 }
-
 
 void resetPins()
 {
@@ -235,12 +267,11 @@ void resetPins()
     digitalWrite(COOLER_PIN, RelayState::OFF);
 }
 
-
 void setup()
 {
     Serial.begin(9600);
-    Serial.println("Setup");
-    
+    print("Setup");
+
     resetPins();
 
     createThread(manageCooler, 1000);
@@ -252,7 +283,6 @@ void setup()
     Timer1.start();
 
     printStatistics();
-    
 }
 
 void updateSensors()
@@ -264,8 +294,4 @@ void updateSensors()
 void loop()
 {
     updateSensors();
-    //int a2 = analogRead(2);
-    //Serial.print("A2: ");
-    //Serial.println(a2);
-    //delay(1000);
 }
