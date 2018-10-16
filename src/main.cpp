@@ -287,7 +287,7 @@ void setup()
 
 void updateSensors()
 {
-    coolerAmps.update();
+    coolerAmps.update(115.0f);
     systemVoltage.update();
 }
 
