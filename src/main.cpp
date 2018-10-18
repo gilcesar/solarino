@@ -3,45 +3,51 @@
 #include <ThreadController.h>
 #include <ThreadRunOnce.h>
 
+#include "TimeService.h"
 #include "VoltageSensor.h"
 #include "ACS712Sensor.h"
 
-//template<class T> inline Print &operator <<(Print &obj, T arg) { obj.print(arg); return obj; }
+template <class T>
+inline Print &operator<<(Print &obj, T arg)
+{
+    obj.print(arg);
+    return obj;
+}
+
 
 void print(String header)
 {
-    Serial.print(millis() % 86400000UL);
-    Serial.print(" ");
-    Serial.print(header);
+    Serial << timeToString(now()) << " " << header;
 }
+
 void println(String header)
 {
     print(header);
-    Serial.println();
+    Serial << "\n";
 }
 
 void println(String header, String value)
 {
     print(header);
-    Serial.println(value);
+    Serial << value << "\n";
 }
 
 void println(String header, float value)
 {
     print(header);
-    Serial.println(value);
+    Serial << value << "\n";
 }
 
 void println(String header, long value)
 {
     print(header);
-    Serial.println(value);
+    Serial << value << "\n";
 }
 
 void println(String header, bool value)
 {
     print(header);
-    Serial.println(value);
+    Serial << value << "\n";
 }
 
 const uint8_t SOURCE_PIN = 2;
@@ -50,8 +56,8 @@ const uint8_t DISABLE_EMERGENCY_PIN = 4;
 
 enum RelayState
 {
-    ON = LOW,
-    OFF = HIGH,
+    RELAY_ON = LOW,
+    RELAY_OFF = HIGH,
     AWAITING_ON
 };
 
@@ -59,15 +65,14 @@ const float RAISE_REF = 0.5;
 //O sitema é de 24V, porém será dividido por dois por causa do limite do sensor
 const float EMERGENCY_VOLTAGE = 23.4;
 const float LOW_VOLTAGE = 24.6;
-//const float RECONNECT_COOLER = 26.2;
 const float DISCONNECT_SOURCE = 26.4;
 bool emergencyCharge = false;
 
-RelayState coolerState = RelayState::OFF;
-RelayState sourceState = RelayState::OFF;
+RelayState coolerState = RelayState::RELAY_OFF;
+RelayState sourceState = RelayState::RELAY_OFF;
 
 ACS712Sensor coolerAmps = ACS712Sensor(A0, Current::AC);
-VoltageSensor systemVoltage = VoltageSensor(A1, 2.00); //Ajuste para o divisor de tensao
+VoltageSensor systemVoltage = VoltageSensor(A1, 2.03); //Ajuste para o divisor de tensao
 
 typedef void(ThreadCallback)();
 
@@ -103,27 +108,27 @@ uint8_t readOutputPinState(uint8_t pin)
 
 bool isCoolerOn()
 {
-    return readOutputPinState(COOLER_PIN) == RelayState::ON;
+    return readOutputPinState(COOLER_PIN) == RelayState::RELAY_ON;
 }
 
 bool isSourceOn()
 {
-    return readOutputPinState(SOURCE_PIN) == RelayState::ON;
+    return readOutputPinState(SOURCE_PIN) == RelayState::RELAY_ON;
 }
 
 void updateCoolerState()
 {
-    coolerState = isCoolerOn() ? RelayState::ON : RelayState::OFF;
+    coolerState = isCoolerOn() ? RelayState::RELAY_ON : RelayState::RELAY_OFF;
 }
 void updateSourceState()
 {
-    sourceState = isSourceOn() ? RelayState::ON : RelayState::OFF;
+    sourceState = isSourceOn() ? RelayState::RELAY_ON : RelayState::RELAY_OFF;
 }
 
 void turnOnCooler()
 {
     println("turnOnCooler");
-    digitalWrite(COOLER_PIN, RelayState::ON);
+    digitalWrite(COOLER_PIN, RelayState::RELAY_ON);
     updateCoolerState();
 }
 ThreadRunOnce *turnOnCoolerThread = createThreadRunOnce(turnOnCooler);
@@ -131,7 +136,7 @@ ThreadRunOnce *turnOnCoolerThread = createThreadRunOnce(turnOnCooler);
 void turnOffCooler()
 {
     println("turnOffCooler");
-    digitalWrite(COOLER_PIN, RelayState::OFF);
+    digitalWrite(COOLER_PIN, RelayState::RELAY_OFF);
     updateCoolerState();
 }
 ThreadRunOnce *turnOffCoolerThread = createThreadRunOnce(turnOffCooler);
@@ -139,7 +144,7 @@ ThreadRunOnce *turnOffCoolerThread = createThreadRunOnce(turnOffCooler);
 void turnOnSource()
 {
     println("turnOnSource");
-    digitalWrite(SOURCE_PIN, RelayState::ON);
+    digitalWrite(SOURCE_PIN, RelayState::RELAY_ON);
     updateSourceState();
 }
 ThreadRunOnce *turnOnSourceThread = createThreadRunOnce(turnOnSource);
@@ -147,7 +152,7 @@ ThreadRunOnce *turnOnSourceThread = createThreadRunOnce(turnOnSource);
 void turnOffSource()
 {
     println("turnOffSource");
-    digitalWrite(SOURCE_PIN, RelayState::OFF);
+    digitalWrite(SOURCE_PIN, RelayState::RELAY_OFF);
     updateSourceState();
 }
 ThreadRunOnce *turnOffSourceThread = createThreadRunOnce(turnOffSource);
@@ -170,12 +175,12 @@ bool shouldStartEmergencyCharge()
 bool canTurnOnCooler()
 {
     float amps = coolerAmps.getValue();
-    return coolerState == RelayState::OFF && (amps > RAISE_REF) && !isEmergencyCharge() && systemVoltage.getValue() > LOW_VOLTAGE;
+    return coolerState == RelayState::RELAY_OFF && (amps > RAISE_REF) && !isEmergencyCharge() && systemVoltage.getValue() > LOW_VOLTAGE;
 }
 bool canTurnOffCooler()
 {
     float amps = coolerAmps.getValue();
-    return coolerState == RelayState::ON && (amps < RAISE_REF || isEmergencyCharge());
+    return coolerState == RelayState::RELAY_ON && (amps < RAISE_REF || isEmergencyCharge());
 }
 
 bool isSystemVoltageOk()
@@ -245,16 +250,18 @@ void manageSystemVoltage()
         turnOffSourceThread->setRunOnce(1);
     }
 }
+
 void printStatistics()
 {
-    println("\nStatistics");
-    println("\tAmps: ", coolerAmps.getValue());
-    println("\tisCoolerOn: ", isCoolerOn());
-    println("\tisSourceOn: ", isSourceOn());
-    println("\tEmergency Charge: ", isEmergencyCharge());
-    println("\tEmergency Charge Disabled: ", isEmergencyChargeDisabled());
-    println("\tVoltage OK: ", isSystemVoltageOk());
-    println("\tVoltage: ", getSystemVoltage());
+    Serial << "\nStatistics - ";
+    println(dateToString(now()));
+    println("Amps: ", coolerAmps.getValue());
+    println("isCoolerOn: ", isCoolerOn());
+    println("isSourceOn: ", isSourceOn());
+    println("Emergency Charge: ", isEmergencyCharge());
+    println("Emergency Charge Disabled: ", isEmergencyChargeDisabled());
+    println("Voltage OK: ", isSystemVoltageOk());
+    println("Voltage: ", getSystemVoltage());
 }
 
 void resetPins()
@@ -263,8 +270,8 @@ void resetPins()
     pinMode(COOLER_PIN, OUTPUT);
     pinMode(DISABLE_EMERGENCY_PIN, INPUT);
 
-    digitalWrite(SOURCE_PIN, RelayState::OFF);
-    digitalWrite(COOLER_PIN, RelayState::OFF);
+    digitalWrite(SOURCE_PIN, RelayState::RELAY_OFF);
+    digitalWrite(COOLER_PIN, RelayState::RELAY_OFF);
 }
 
 void setup()
@@ -278,9 +285,11 @@ void setup()
     createThread(manageSystemVoltage, 1000);
     createThread(printStatistics, 5000);
 
-    Timer1.initialize(10000);
-    Timer1.attachInterrupt(timerCallback);
-    Timer1.start();
+    //Timer1.initialize(10000);
+    //Timer1.attachInterrupt(timerCallback);
+    //Timer1.start();
+
+    configTimeService();
 
     printStatistics();
 }
@@ -291,7 +300,9 @@ void updateSensors()
     systemVoltage.update();
 }
 
+//uint64_t myTime = millis();
 void loop()
 {
     updateSensors();
+    timerCallback();
 }

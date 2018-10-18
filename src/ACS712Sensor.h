@@ -10,6 +10,8 @@
 #include "Arduino.h"
 #include "Sensor.h"
 
+
+//Acertar integer overflow 
 enum MillisTime
 {
     SECOND = 1000,
