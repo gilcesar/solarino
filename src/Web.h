@@ -6,127 +6,7 @@
 
 #include "index.html.h"
 #include "asprintf.h"
-
-ESP8266 wifi(Serial1);
-
-String espWriteln(String command)
-{
-	Serial1.println(command);
-	//uint64_t timeout = 2000UL;
-	bool debug = true;
-
-	String response = "";
-	//uint64_t time = millis();
-
-	bool done = false;
-	int count = 100;
-	while (count-- > 0 && !done)
-	{
-		//Serial.println(count);
-		delay(10);
-		while (Serial1.available())
-		{
-			response += (char)Serial1.read(); // read the next character.
-			done = true;
-			delay(1);
-		}
-	}
-	//Serial.println("_");
-
-	if (debug)
-	{
-		Serial.print(response);
-	}
-	return response;
-}
-
-String qa(String q)
-{
-	Serial1.println(q);
-	String a = "";
-	delay(100);
-	while (Serial1.available())
-	{
-		a += (char)Serial1.read();
-	}
-	return a;
-}
-
-void initWifi()
-{
-	/*     Serial.println("iniciando wifi");
-    espWriteln("AT+RST");                               // reset
-    espWriteln("AT+CWJAP=\"GIGANETGIL\",\"34760864\""); //Connect network
-    espWriteln("AT+GMR");                               //Firmware version
-    espWriteln("AT+CWMODE=1");
-    espWriteln("AT+CIFSR");          // IP Address
-    espWriteln("AT+CIPMUX=1");       // Multiple connections
-    espWriteln("AT+CIPSERVER=1,80"); // start comm port 80 */
-
-	Serial.print("FW Version: ");
-	Serial.println(wifi.getVersion().c_str());
-
-	if (wifi.setOprToStation())
-	{
-		Serial.print("to station ok\r\n");
-	}
-	else
-	{
-		Serial.print("to station err\r\n");
-	}
-
-	if (wifi.joinAP("GIGANETGIL", "34760864"))
-	{
-		Serial.print("Join AP success\r\n");
-		Serial.print("IP: ");
-		Serial.println(wifi.getLocalIP().c_str());
-	}
-	else
-	{
-		Serial.print("Join AP failure\r\n");
-	}
-
-	if (wifi.enableMUX())
-	{
-		Serial.print("multiple ok\r\n");
-	}
-	else
-	{
-		Serial.print("multiple err\r\n");
-	}
-
-	if (wifi.startTCPServer(80))
-	{
-		Serial.print("start tcp server ok\r\n");
-	}
-	else
-	{
-		Serial.print("start tcp server err\r\n");
-	}
-
-	if (wifi.setTCPServerTimeout(10))
-	{
-		Serial.print("set tcp server timout 10 seconds\r\n");
-	}
-	else
-	{
-		Serial.print("set tcp server timout err\r\n");
-	}
-
-	Serial.print("setup end\r\n");
-}
-
-/* uint8_t *getHLength(uint32_t length)
-{
-	uint8_t *buffer = (uint8_t *)malloc(8);
-	itoa(length, (char *)buffer, 10);
-	String len = "Content-Length: ";
-	len += (char *)buffer;
-	len += "\r\n\r\n";
-	return buffer;
-}
-
- */
+#include "Storage.h"
 
 typedef enum HeaderType
 {
@@ -136,13 +16,39 @@ typedef enum HeaderType
 	Plain = 3
 };
 
+ESP8266 wifi(Serial1);
+String path = "/";
+
+void initWifi(String appPath)
+{
+	path = appPath;
+	Serial.print("FW Version: ");
+	Serial.println(wifi.getVersion().c_str());
+	bool res = wifi.setOprToStation();
+	Serial.println(res ? "to station ok" : "to station err");
+
+	res = wifi.joinAP("GIGANETGIL", "34760864");
+	Serial.println(res ? ("Join AP success. IP: " + wifi.getLocalIP()).c_str() : "Join AP failure");
+
+	res = wifi.enableMUX();
+	Serial.println(res ? "multiple ok" : "multiple err");
+
+	res = wifi.startTCPServer(80);
+	Serial.println(res ? "start tcp server ok" : "tcp server start err");
+
+	res = wifi.setTCPServerTimeout(10);
+	Serial.println(res ? "set tcp server timout 10 seconds" : "set tcp server timout err");
+
+	Serial.println("setup end");
+}
+
 void response(uint8_t mux_id, HeaderType type, uint8_t *content, int size)
 {
-	 const char tStr[4][30] = {"text/html",
+	const char tStr[4][30] = {"text/html",
 							  "application/json",
 							  "application/x-javascript",
 							  "text/plain"};
- 
+
 	const char header[] = "HTTP/1.1 200 OK\r\n"
 						  "Content-Length: %d\r\n"
 						  "Server: ESP8266 do Gil\r\n"
@@ -153,12 +59,24 @@ void response(uint8_t mux_id, HeaderType type, uint8_t *content, int size)
 
 	int bufSize = asprintf(&buf, header, size, tStr[type]);
 
-	Serial.print("bufSize: ");
+	/* 	Serial.print("bufSize: ");
 	Serial.println(bufSize);
-
-	wifi.send(mux_id, (uint8_t*)buf, bufSize);
+ */
+	wifi.send(mux_id, (uint8_t *)buf, bufSize);
 	free(buf);
 	wifi.send(mux_id, content, size);
+}
+
+void sendFile(uint8_t mux_id, const char *fileName)
+{
+	uint8_t buf[128] = {0};
+	size_t len = 0;
+	File f = openFile(fileName);
+	while ((len = f.readBytes(buf, sizeof(buf))) > 0)
+	{
+		wifi.send(mux_id, buf, len);
+	}
+	closeFile(f);
 }
 
 void webserver()
@@ -170,12 +88,9 @@ void webserver()
 	uint32_t len = wifi.recv(&mux_id, buffer, sizeof(buffer), 100);
 	if (len > 0)
 	{
-		Serial.print("Status:[");
-		Serial.print(wifi.getIPStatus().c_str());
-		Serial.println("]");
+		Serial.println("Status:[" + wifi.getIPStatus() + "]");
+		Serial.println("Received from : " + String(mux_id));
 
-		Serial.print("Received from :");
-		Serial.print(mux_id);
 		String req = "";
 		Serial.print("[");
 		for (uint32_t i = 0; i < len; i++)
@@ -188,10 +103,12 @@ void webserver()
 		if (strstr(req.c_str(), "favicon") != NULL)
 		{
 			Serial.println("favicon requested");
+			sendFile(mux_id, "favicon.ico");
 		}
 		else if (strstr(req.c_str(), "angular") != NULL)
 		{
 			Serial.println("angular requested");
+			sendFile(mux_id, "angular.min.js");
 		}
 		else if (strstr(req.c_str(), "values") != NULL)
 		{
@@ -206,18 +123,9 @@ void webserver()
 			response(mux_id, HeaderType::Html, html, sizeof(html));
 		}
 
-		if (wifi.releaseTCP(mux_id))
-		{
-			Serial.print("release tcp ");
-			Serial.print(mux_id);
-			Serial.println(" ok");
-		}
-		else
-		{
-			Serial.print("release tcp");
-			Serial.print(mux_id);
-			Serial.println(" err");
-		}
+		bool res = wifi.releaseTCP(mux_id);
+		Serial.println(res ? "release tcp " + String(mux_id) + " ok"
+						   : "release tcp " + String(mux_id) + " err");
 
 		Serial.print("Status:[");
 		Serial.print(wifi.getIPStatus().c_str());
