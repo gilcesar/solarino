@@ -6,6 +6,7 @@
 #include "TimeService.h"
 #include "VoltageSensor.h"
 #include "ACS712Sensor.h"
+#include "Web.h"
 
 template <class T>
 inline Print &operator<<(Print &obj, T arg)
@@ -13,7 +14,6 @@ inline Print &operator<<(Print &obj, T arg)
     obj.print(arg);
     return obj;
 }
-
 
 void print(String header)
 {
@@ -274,24 +274,29 @@ void resetPins()
     digitalWrite(COOLER_PIN, RelayState::RELAY_OFF);
 }
 
+
 void setup()
 {
-    Serial.begin(9600);
+    Serial.begin(115200);
+    Serial1.begin(115200);
     print("Setup");
 
     resetPins();
 
-    createThread(manageCooler, 1000);
-    createThread(manageSystemVoltage, 1000);
-    createThread(printStatistics, 5000);
+    //createThread(manageCooler, 1000);
+    //createThread(manageSystemVoltage, 1000);
+    //createThread(printStatistics, 5000);
 
     //Timer1.initialize(10000);
     //Timer1.attachInterrupt(timerCallback);
     //Timer1.start();
 
-    configTimeService();
+    //configTimeService();
 
-    printStatistics();
+    //printStatistics();
+    //initWifi();
+    //espWriteln("AT+RST", 2000, true);// reset
+    initWifi();
 }
 
 void updateSensors()
@@ -300,9 +305,21 @@ void updateSensors()
     systemVoltage.update();
 }
 
-//uint64_t myTime = millis();
+uint64_t myTime = millis();
 void loop()
 {
     updateSensors();
     timerCallback();
+
+    /* if (millis() - myTime > 5000)
+    {
+        //Serial.println("AT+CIPSEND=0," + content.length());
+        Serial.println(qa("AT+CIPSEND=0,250"));
+        Serial.println(qa("content"));
+        Serial.println(qa("AT+CIPCLOSE=0"));
+
+        myTime = millis();
+    } */
+
+    webserver();
 }
