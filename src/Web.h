@@ -46,22 +46,31 @@ void response(uint8_t mux_id, HeaderType type, uint8_t *content, int size)
 {
 	const char tStr[4][30] = {"text/html",
 							  "application/json",
+							  //"application/vnd.api+json",
 							  "application/x-javascript",
 							  "text/plain"};
 
 	const char header[] = "HTTP/1.1 200 OK\r\n"
 						  "Content-Length: %d\r\n"
-						  "Server: ESP8266 do Gil\r\n"
+						  //"Server: ESP8266 do Gil\r\n"
 						  "Content-Type: %s\r\n"
-						  "Connection: keep-alive\r\n\r\n";
+						  "Access-Control-Allow-Origin: *\r\n"
+						  "Access-Control-Allow-Methods: POST,GET,PUT,DELETE,OPTIONS\r\n"
+						  "Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept \r\n"
+						  "\r\n";
+						  //"Connection: keep-alive\r\n\r\n";
 
 	char *buf;
 
 	int bufSize = asprintf(&buf, header, size, tStr[type]);
 
-	/* 	Serial.print("bufSize: ");
+	Serial.print(">>bufSize: ");
 	Serial.println(bufSize);
- */
+	Serial.print(">>buf: ");
+	Serial.println(buf);
+	Serial.print(">>content: ");
+	Serial.println((char*)content);
+ 
 	wifi.send(mux_id, (uint8_t *)buf, bufSize);
 	free(buf);
 	wifi.send(mux_id, content, size);
@@ -69,14 +78,14 @@ void response(uint8_t mux_id, HeaderType type, uint8_t *content, int size)
 
 void sendFile(uint8_t mux_id, const char *fileName)
 {
-	uint8_t buf[128] = {0};
+	/* uint8_t buf[128] = {0};
 	size_t len = 0;
 	File f = openFile(fileName);
 	while ((len = f.readBytes(buf, sizeof(buf))) > 0)
 	{
 		wifi.send(mux_id, buf, len);
 	}
-	closeFile(f);
+	closeFile(f); */
 }
 
 void webserver()
@@ -114,8 +123,7 @@ void webserver()
 		{
 			Serial.println("values requested");
 			uint8_t values[] = "{\"value1\": 10.0, \"value2\": 20.0}";
-			//response(mux_id, HeaderType::Json, values, sizeof(values));
-			wifi.send(values, sizeof(values));
+			response(mux_id, HeaderType::Json, values, sizeof(values));
 		}
 		else
 		{

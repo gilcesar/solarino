@@ -296,7 +296,7 @@ void setup()
     //printStatistics();
     //initWifi();
     //espWriteln("AT+RST", 2000, true);// reset
-    initWifi();
+    initWifi("/solarino");
 }
 
 void updateSensors()
