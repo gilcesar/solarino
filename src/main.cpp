@@ -3,10 +3,11 @@
 #include <ThreadController.h>
 #include <ThreadRunOnce.h>
 
-#include "TimeService.h"
+//#include "TimeService.h"
 #include "VoltageSensor.h"
 #include "ACS712Sensor.h"
 #include "Web.h"
+#include "State.h"
 
 template <class T>
 inline Print &operator<<(Print &obj, T arg)
@@ -17,7 +18,7 @@ inline Print &operator<<(Print &obj, T arg)
 
 void print(String header)
 {
-    Serial << timeToString(now()) << " " << header;
+    Serial << /*timeToString(now()) << " " <<*/ header;
 }
 
 void println(String header)
@@ -251,17 +252,28 @@ void manageSystemVoltage()
     }
 }
 
-void printStatistics()
+void updateStatistics()
 {
-    Serial << "\nStatistics - ";
-    println(dateToString(now()));
-    println("Amps: ", coolerAmps.getValue());
+    //Serial << "\nStatistics - ";
+    //println(dateToString(now()));
+   /*  println("Amps: ", coolerAmps.getValue());
     println("isCoolerOn: ", isCoolerOn());
     println("isSourceOn: ", isSourceOn());
     println("Emergency Charge: ", isEmergencyCharge());
     println("Emergency Charge Disabled: ", isEmergencyChargeDisabled());
     println("Voltage OK: ", isSystemVoltageOk());
-    println("Voltage: ", getSystemVoltage());
+    println("Voltage: ", getSystemVoltage()); */
+
+    state.setAmps(coolerAmps.getValue());
+    state.setCoolerOn(isCoolerOn());
+    state.setSourceOn(isSourceOn());
+    state.setEmergencyOn(isEmergencyCharge());
+    state.setEmergencyDesabled(isEmergencyChargeDisabled());
+    state.setSystemOK(isSystemVoltageOk);
+    state.setSystemVoltage(getSystemVoltage());
+
+
+
 }
 
 void resetPins()
@@ -269,23 +281,26 @@ void resetPins()
     pinMode(SOURCE_PIN, OUTPUT);
     pinMode(COOLER_PIN, OUTPUT);
     pinMode(DISABLE_EMERGENCY_PIN, INPUT);
-
     digitalWrite(SOURCE_PIN, RelayState::RELAY_OFF);
     digitalWrite(COOLER_PIN, RelayState::RELAY_OFF);
+
+    pinMode(chipSelect, OUTPUT);
+    digitalWrite(chipSelect, HIGH);
 }
 
 
 void setup()
 {
     Serial.begin(115200);
+    while(!Serial){;}
     Serial1.begin(115200);
-    print("Setup");
+    println("Setup");
 
     resetPins();
 
-    //createThread(manageCooler, 1000);
-    //createThread(manageSystemVoltage, 1000);
-    //createThread(printStatistics, 5000);
+    createThread(manageCooler, 1000);
+    createThread(manageSystemVoltage, 1000);
+    createThread(updateStatistics, 1000);
 
     //Timer1.initialize(10000);
     //Timer1.attachInterrupt(timerCallback);
@@ -293,10 +308,10 @@ void setup()
 
     //configTimeService();
 
-    //printStatistics();
-    //initWifi();
-    //espWriteln("AT+RST", 2000, true);// reset
-    initWifi("/solarino");
+    updateStatistics();
+
+    initWifi("/SOLARINO");
+    initStorage();
 }
 
 void updateSensors()
@@ -310,16 +325,6 @@ void loop()
 {
     updateSensors();
     timerCallback();
-
-    /* if (millis() - myTime > 5000)
-    {
-        //Serial.println("AT+CIPSEND=0," + content.length());
-        Serial.println(qa("AT+CIPSEND=0,250"));
-        Serial.println(qa("content"));
-        Serial.println(qa("AT+CIPCLOSE=0"));
-
-        myTime = millis();
-    } */
 
     webserver();
 }

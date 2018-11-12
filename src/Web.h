@@ -3,17 +3,80 @@
 
 #include <WString.h>
 #include <ESP8266.h>
+#include <SPI.h>
+#include <SD.h>
 
-#include "index.html.h"
 #include "asprintf.h"
-#include "Storage.h"
+#include "State.h"
 
+const int chipSelect = 53; //Mega
+//const int chipSelect = ;//Nano
+
+File root;
+void printDirectory(File dir, int numTabs)
+{
+	while (true)
+	{
+		//Serial.println("root");
+		File entry = dir.openNextFile();
+		if (!entry)
+		{
+			Serial.println("no more files");
+			break;
+		}
+		for (uint8_t i = 0; i < numTabs; i++)
+		{
+			Serial.print('\t');
+		}
+		Serial.print(entry.name());
+		if (entry.isDirectory())
+		{
+			Serial.println("/");
+			printDirectory(entry, numTabs + 1);
+		}
+		else
+		{
+			// files have sizes, directories do not
+			Serial.print("\t\t");
+			Serial.println(entry.size(), DEC);
+		}
+		entry.close();
+	}
+}
+
+void initStorage()
+{
+	Serial.println("Initializing SD card...");
+
+	if (!SD.begin(chipSelect))
+	{
+		Serial.println("initialization failed!");
+		//delay(100); //?
+	}
+	Serial.println("initialization done.");
+
+	root = SD.open("/");
+
+	printDirectory(root, 0);
+}
+
+
+/*
+SOLARINO/     2018-11-03 23:28:10
+  ANGULA~1.JS   2018-10-23 16:47:40 166352
+  BOOTST~1.CSS  2018-01-18 13:33:30 144877
+  FAVICON.ICO   2017-02-01 00:06:26 32038
+  INDEX~1.HTM   2018-11-03 21:37:32 594
+
+*/
 typedef enum HeaderType
 {
 	Html = 0,
 	Json = 1,
 	Js = 2,
-	Plain = 3
+	Plain = 3,
+	Icon = 4,
+	CSS = 5
 };
 
 ESP8266 wifi(Serial1);
@@ -22,37 +85,45 @@ String path = "/";
 void initWifi(String appPath)
 {
 	path = appPath;
-	Serial.print("FW Version: ");
-	Serial.println(wifi.getVersion().c_str());
+	//Serial.print("FW Version: ");
+	//Serial.println(wifi.getVersion().c_str());
+	Serial.println("Initializing wifi...");
+	delay(100);
 	bool res = wifi.setOprToStation();
 	Serial.println(res ? "to station ok" : "to station err");
 
 	res = wifi.joinAP("GIGANETGIL", "34760864");
 	Serial.println(res ? ("Join AP success. IP: " + wifi.getLocalIP()).c_str() : "Join AP failure");
+	if (res)
+	{
+		res = wifi.enableMUX();
+		Serial.println(res ? "multiple ok" : "multiple err");
 
-	res = wifi.enableMUX();
-	Serial.println(res ? "multiple ok" : "multiple err");
+		res = wifi.startTCPServer(80);
+		Serial.println(res ? "start tcp server ok" : "tcp server start err");
 
-	res = wifi.startTCPServer(80);
-	Serial.println(res ? "start tcp server ok" : "tcp server start err");
-
-	res = wifi.setTCPServerTimeout(10);
-	Serial.println(res ? "set tcp server timout 10 seconds" : "set tcp server timout err");
-
-	Serial.println("setup end");
+		res = wifi.setTCPServerTimeout(10);
+		Serial.println(res ? "set tcp server timout 10 seconds" : "set tcp server timout err");
+		Serial.println("setup wifi end.");
+	}
+	else
+	{
+		Serial.println("setup wifi failed!");
+	}
 }
 
-void response(uint8_t mux_id, HeaderType type, uint8_t *content, int size)
+void sendHeader(uint8_t mux_id, HeaderType type, uint32_t size)
 {
-	const char tStr[4][32] = {"text/html; charset=utf-8",
-							  "application/json; charset=utf-8",
-							  //"application/vnd.api+json",
+	const char tStr[6][25] = {"text/html",
+							  "application/json",
 							  "application/x-javascript",
-							  "text/plain; charset=utf-8"};
+							  "text/plain",
+							  "image/x-icon",
+							  "text/css"};
 
 	const char header[] = "HTTP/1.1 200 OK\r\n"
-						  "Content-Length: %d\r\n"
-						  "Connection: keep-alive\r\n";
+						  "Content-Length: %lu\r\n"
+						  "Connection: keep-alive\r\n"
 						  "X-Powered-By: ESP8266\r\n"
 						  "Vary: Origin\r\n"
 						  "Access-Control-Allow-Origin: *\r\n"
@@ -64,41 +135,56 @@ void response(uint8_t mux_id, HeaderType type, uint8_t *content, int size)
 	char *buf;
 
 	int bufSize = asprintf(&buf, header, size, tStr[type]);
+	Serial.print("size = ");
+	Serial.println(size);
 
-	Serial.print(">>bufSize: ");
-	Serial.println(bufSize);
-	Serial.print(">>buf: ");
 	Serial.println(buf);
-	Serial.print(">>content: ");
-	Serial.println((char*)content);
- 
+
 	wifi.send(mux_id, (uint8_t *)buf, bufSize);
 	free(buf);
-	wifi.send(mux_id, content, size);
 }
 
-void sendFile(uint8_t mux_id, const char *fileName)
+void responseFile(uint8_t mux_id, HeaderType type, const char *fileName)
 {
-	/* uint8_t buf[128] = {0};
-	size_t len = 0;
-	File f = openFile(fileName);
-	while ((len = f.readBytes(buf, sizeof(buf))) > 0)
+	File f = SD.open(fileName, FILE_READ);
+	//delay(50);
+	if (f)
 	{
-		wifi.send(mux_id, buf, len);
+		Serial.print("Send file init. Size ");
+		Serial.println(f.size());
+		uint8_t buf[256] = {0};
+		size_t len = 0;
+		sendHeader(mux_id, type, f.size());
+		while ((len = f.readBytes(buf, sizeof(buf))) > 0)
+		{
+			Serial.print("-");
+			wifi.send(mux_id, buf, len);
+		}
+		f.close();
+		Serial.println("Send file end.");
 	}
-	closeFile(f); */
+	else
+	{
+		Serial.println("Arquivo não enviado!");
+	}
+}
+
+void responseJson(uint8_t mux_id, const char * json, size_t size)
+{
+	sendHeader(mux_id, HeaderType::Json, size);
+	wifi.send(mux_id, (uint8_t*)json, size);
 }
 
 void webserver()
 {
 
-	uint8_t buffer[128] = {0};
+	uint8_t buffer[64] = {0};
 	uint8_t mux_id;
-	delay(10);
-	uint32_t len = wifi.recv(&mux_id, buffer, sizeof(buffer), 100);
+	//delay(10);
+	uint32_t len = wifi.recv(&mux_id, buffer, sizeof(buffer));
 	if (len > 0)
 	{
-		Serial.println("Status:[" + wifi.getIPStatus() + "]");
+		//Serial.println("Status:[" + wifi.getIPStatus() + "]");
 		Serial.println("Received from : " + String(mux_id));
 
 		String req = "";
@@ -113,23 +199,35 @@ void webserver()
 		if (strstr(req.c_str(), "favicon") != NULL)
 		{
 			Serial.println("favicon requested");
-			sendFile(mux_id, "favicon.ico");
+			String fullPath = path + "/FAVICON.ICO";
+			responseFile(mux_id, HeaderType::Icon, fullPath.c_str());
 		}
 		else if (strstr(req.c_str(), "angular") != NULL)
 		{
 			Serial.println("angular requested");
-			sendFile(mux_id, "angular.min.js");
+			String fullPath = path + "/ANGULA~1.JS";
+			//String fullPath = path + "/CHANGE.LOG";
+			responseFile(mux_id, HeaderType::Js, fullPath.c_str());
 		}
-		else if (strstr(req.c_str(), "values") != NULL)
+		else if (strstr(req.c_str(), "bootstrap") != NULL)
 		{
-			Serial.println("values requested");
-			uint8_t values[] = "{\"value1\": \"10.0\", \"value2\": \"20.0\"}";
-			response(mux_id, HeaderType::Json, values, sizeof(values));
+			Serial.println("bootstrap requested");
+			String fullPath = path + "/BOOTST~1.CSS";
+			responseFile(mux_id, HeaderType::Js, fullPath.c_str());
+		}
+		else if (strstr(req.c_str(), "stats") != NULL)
+		{
+			Serial.println("stats requested");
+			char stats[200] = {0};
+			size_t size = state.getJsonStats(stats);
+			Serial.println(stats);
+    		responseJson(mux_id, stats, size);
 		}
 		else
 		{
 			Serial.println("html requested");
-			response(mux_id, HeaderType::Html, html, sizeof(html));
+			String fullPath = (path + "/INDEX~1.HTM");
+			responseFile(mux_id, HeaderType::Html, fullPath.c_str());
 		}
 
 		bool res = wifi.releaseTCP(mux_id);
@@ -140,6 +238,11 @@ void webserver()
 		Serial.print(wifi.getIPStatus().c_str());
 		Serial.println("]");
 	}
+	else
+	{
+		Serial.print(".");
+	}
 }
+
 
 #endif
