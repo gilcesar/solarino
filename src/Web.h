@@ -92,7 +92,7 @@ void initWifi(String appPath)
 	bool res = wifi.setOprToStation();
 	Serial.println(res ? "to station ok" : "to station err");
 
-	res = wifi.joinAP("GIGANETGIL", "34760864");
+	res = wifi.joinAP("MeuAp", "MinhaSenha");
 	Serial.println(res ? ("Join AP success. IP: " + wifi.getLocalIP()).c_str() : "Join AP failure");
 	if (res)
 	{
